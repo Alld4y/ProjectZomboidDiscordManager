@@ -473,6 +473,7 @@ const move_Currency_to_wallet = async (txid, playerName, dollarCount, moneyCount
         
         // --- สมมติว่าอัปเดต DB สำเร็จแล้ว ---
         console.log(`[DB] ✅ เพิ่มเงินให้ ${playerName} จำนวน ${totalBonus} Coins สำเร็จ`);
+        await query(`UPDATE public.data SET coin = coin + $1 WHERE player_name = $2`, [totalBonus, playerName]);
 
         // 2. เขียนไฟล์ยืนยัน (ใช้การต่อท้ายและ Flush ทันที)
         // เพิ่มเลข TXID และขึ้นบรรทัดใหม่
