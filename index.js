@@ -462,16 +462,21 @@ const logsFolder = 'C:\\Users\\Mhek3\\Zomboid\\Logs';
 /**
  * 1. ฟังก์ชันจัดการ Update เงินเข้าฐานข้อมูล
  */
-const move_CPE_Dollar_to_wallet = async (playerName, dollarCount) => {
-    if (playerName && dollarCount > 0) {
+/**
+ * 1. ฟังก์ชันอัปเดต Database (รองรับ 2 สกุลเงิน)
+ */
+const move_Currency_to_wallet = async (playerName, dollarCount, moneyCount) => {
+    if (playerName && (dollarCount > 0 || moneyCount > 0)) {
         try {
-            console.log(`[DB] กำลังเพิ่มเงิน ${dollarCount * 2} Coins ให้ผู้เล่น: ${playerName}`);
+            // สมมติอัตราแลกเปลี่ยน: CPE_Dollar * 2 และ Money * 1 (ปรับเปลี่ยนได้ตามใจชอบ)
+            const totalBonus = (dollarCount * 2) + (moneyCount * 1);
+            
+            if (totalBonus <= 0) return;
+
+            console.log(`[DB] กำลังเพิ่มเงินรวม ${totalBonus} Coins ให้ผู้เล่น: ${playerName} (CPE:${dollarCount}, Money:${moneyCount})`);
             
             // อัปเดตเงินใน Database
-            await query(`UPDATE public.data SET coin = coin + $1 WHERE player_name = $2`, [dollarCount * 2, playerName]);
-            
-            // สั่งลบไอเทมในเกม (ส่งชื่อผู้เล่น, ชื่อไอเทม, และจำนวนที่นับได้จาก Log)
-            deleteItemFromPlayer(playerName, 'Base.CPE_Dollar', dollarCount);
+            await query(`UPDATE public.data SET coin = coin + $1 WHERE player_name = $2`, [totalBonus, playerName]);
             
             console.log(`✅ สำเร็จ: อัปเดตกระเป๋าเงินของ ${playerName} เรียบร้อย`);
         } catch (error) {
@@ -481,24 +486,26 @@ const move_CPE_Dollar_to_wallet = async (playerName, dollarCount) => {
 };
 
 /**
- * 2. ฟังก์ชันอ่าน Log และ Parse ข้อมูล [PLAYER] กับ [AMOUNT]
+ * 2. ปรับปรุงตัว Parse Log ให้ดึงค่าใหม่ได้
  */
 function parseZomboidLog(targetFilePath) {
     if (!existsSync(targetFilePath)) return null;
 
     const fileContent = readFileSync(targetFilePath, 'utf-8');
     const lines = fileContent.trim().split(/\r?\n/);
-    
-    // อ่านบรรทัดล่าสุด (เพื่อป้องกันการอ่านซ้ำบรรทัดเก่าในไฟล์เดิม)
     const lastLine = lines[lines.length - 1];
     
-    if (lastLine && lastLine.includes('[PLAYER]:') && lastLine.includes('[AMOUNT]:')) {
-        // ใช้ Regex ดึงค่า Name และ Amount
-        const match = lastLine.match(/\[PLAYER\]:(.*?)\s+\[AMOUNT\]:(\d+)/);
+    // ตรวจสอบโครงสร้าง Log ใหม่
+    if (lastLine && lastLine.includes('[PLAYER]:')) {
+        // Regex ใหม่สำหรับดึง PLAYER, CPE_DOLLAR และ MONEY
+        const regex = /\[PLAYER\]:(.*?)\s+\[CPE_DOLLAR\]:(\d+)\s+\[MONEY\]:(\d+)/;
+        const match = lastLine.match(regex);
+        
         if (match) {
             return {
                 playerName: match[1].trim(),
-                amount: parseInt(match[2], 10)
+                dollarAmount: parseInt(match[2], 10),
+                moneyAmount: parseInt(match[3], 10)
             };
         }
     }
@@ -506,22 +513,22 @@ function parseZomboidLog(targetFilePath) {
 }
 
 /**
- * 3. เริ่มต้น Watch ไฟล์
+ * 3. Watcher (ส่วนเดิมแต่ปรับการเรียกใช้ฟังก์ชัน)
  */
-console.log(`\n🚀 Watcher Start! กำลังเฝ้าดูโฟลเดอร์: ${logsFolder}`);
-
 watch(logsFolder, (eventType, filename) => {
-    // กรองเฉพาะไฟล์ที่มีชื่อ ITEM_DATA_EXPORT
     if (filename && filename.includes('ITEM_DATA_EXPORT')) {
         const exactFilePath = join(logsFolder, filename);
 
-        // รอเล็กน้อยให้ไฟล์เขียนเสร็จ (I/O Buffer)
+        // ป้องกันปัญหาระบบอ่านไฟล์ขณะที่เกมยังเขียนไม่เสร็จ (Race Condition)
         setTimeout(async () => {
             const data = parseZomboidLog(exactFilePath);
             if (data) {
-                console.log(`\n🟢 ตรวจพบการ Export: ${data.playerName} (จำนวน ${data.amount})`);
-                await move_CPE_Dollar_to_wallet(data.playerName, data.amount);
+                console.log(`\n🟢 ตรวจพบการ Export: ${data.playerName}`);
+                console.log(`   - CPE_Dollar: ${data.dollarAmount}`);
+                console.log(`   - Money: ${data.moneyAmount}`);
+                
+                await move_Currency_to_wallet(data.playerName, data.dollarAmount, data.moneyAmount);
             }
-        }, 100);
+        }, 200); // เพิ่มเป็น 200ms เพื่อความชัวร์
     }
 });
