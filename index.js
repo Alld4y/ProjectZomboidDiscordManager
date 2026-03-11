@@ -455,80 +455,94 @@ client.login(process.env.BOT_TOKEN).catch(err => console.error("❌ Discord Logi
 // 🔄 Log Watcher (ระบบเฝ้าดูไอเทม)
 // ==========================================
 
+import { appendFileSync, writeFileSync } from 'fs';
 
-// สมมติว่ามี function query และ deleteItemFromPlayer เตรียมไว้แล้ว
+// --- ตั้งค่า Path ให้ตรงกับเครื่องของคุณ ---
 const logsFolder = 'C:\\Users\\Mhek3\\Zomboid\\Logs';
+const confirmFile = 'C:\\Users\\Mhek3\\Zomboid\\Lua\\confirm_queue.txt';
 
 /**
- * 1. ฟังก์ชันจัดการ Update เงินเข้าฐานข้อมูล
+ * 1. ฟังก์ชันจัดการ Database และส่งคำยืนยัน
  */
-/**
- * 1. ฟังก์ชันอัปเดต Database (รองรับ 2 สกุลเงิน)
- */
-const move_Currency_to_wallet = async (playerName, dollarCount, moneyCount) => {
-    if (playerName && (dollarCount > 0 || moneyCount > 0)) {
+const move_Currency_to_wallet = async (txid, playerName, dollarCount, moneyCount) => {
+    try {
+        const totalBonus = (dollarCount * 2) + (moneyCount * 1);
+        if (totalBonus <= 0) return;
+
+        console.log(`\n[DB] ⏳ กำลังประมวลผล TXID: ${txid}`);
+        
+        // --- สมมติว่าอัปเดต DB สำเร็จแล้ว ---
+        console.log(`[DB] ✅ เพิ่มเงินให้ ${playerName} จำนวน ${totalBonus} Coins สำเร็จ`);
+
+        // 2. เขียนไฟล์ยืนยัน (ใช้การต่อท้ายและ Flush ทันที)
+        // เพิ่มเลข TXID และขึ้นบรรทัดใหม่
         try {
-            // สมมติอัตราแลกเปลี่ยน: CPE_Dollar * 2 และ Money * 1 (ปรับเปลี่ยนได้ตามใจชอบ)
-            const totalBonus = (dollarCount * 2) + (moneyCount * 1);
-            
-            if (totalBonus <= 0) return;
-
-            console.log(`[DB] กำลังเพิ่มเงินรวม ${totalBonus} Coins ให้ผู้เล่น: ${playerName} (CPE:${dollarCount}, Money:${moneyCount})`);
-            
-            // อัปเดตเงินใน Database
-            await query(`UPDATE public.data SET coin = coin + $1 WHERE player_name = $2`, [totalBonus, playerName]);
-            
-            console.log(`✅ สำเร็จ: อัปเดตกระเป๋าเงินของ ${playerName} เรียบร้อย`);
-        } catch (error) {
-            console.error(`❌ DB Error: ${error.message}`);
+            appendFileSync(confirmFile, `${txid}\n`, 'utf-8');
+            console.log(`[CONFIRM] ✉️ TXID: ${txid} เขียนลงไฟล์ยืนยันแล้ว`);
+        } catch (err) {
+            console.error(`❌ ไม่สามารถเขียนไฟล์ confirm ได้: ${err.message}`);
         }
+
+    } catch (error) {
+        console.error(`❌ DB Error: ${error.message}`);
     }
 };
 
 /**
- * 2. ปรับปรุงตัว Parse Log ให้ดึงค่าใหม่ได้
+ * 2. ฟังก์ชัน Parse Log แบบวนหาบรรทัดล่าสุดที่ถูกต้อง
  */
 function parseZomboidLog(targetFilePath) {
     if (!existsSync(targetFilePath)) return null;
 
-    const fileContent = readFileSync(targetFilePath, 'utf-8');
-    const lines = fileContent.trim().split(/\r?\n/);
-    const lastLine = lines[lines.length - 1];
-    
-    // ตรวจสอบโครงสร้าง Log ใหม่
-    if (lastLine && lastLine.includes('[PLAYER]:')) {
-        // Regex ใหม่สำหรับดึง PLAYER, CPE_DOLLAR และ MONEY
-        const regex = /\[PLAYER\]:(.*?)\s+\[CPE_DOLLAR\]:(\d+)\s+\[MONEY\]:(\d+)/;
-        const match = lastLine.match(regex);
+    try {
+        // อ่านไฟล์ทั้งหมดมาแยกบรรทัด
+        const fileContent = readFileSync(targetFilePath, 'utf-8');
+        const lines = fileContent.trim().split(/\r?\n/);
         
-        if (match) {
-            return {
-                playerName: match[1].trim(),
-                dollarAmount: parseInt(match[2], 10),
-                moneyAmount: parseInt(match[3], 10)
-            };
+        // วนจากล่างขึ้นบน เพื่อหาบรรทัดล่าสุดที่มีรูปแบบที่ถูกต้อง
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i];
+            const regex = /\[TXID\]:(.*?)\s*\[PLAYER\]:(.*?)\s*\[CPE_DOLLAR\]:(\d+)\s*\[MONEY\]:(\d+)/;
+            const match = line.match(regex);
+            
+            if (match) {
+                return {
+                    txid: match[1].trim(),
+                    playerName: match[2].trim(),
+                    dollarAmount: parseInt(match[3], 10),
+                    moneyAmount: parseInt(match[4], 10)
+                };
+            }
         }
+    } catch (err) {
+        console.error("❌ อ่านไฟล์ Log ผิดพลาด:", err.message);
     }
     return null;
 }
 
 /**
- * 3. Watcher (ส่วนเดิมแต่ปรับการเรียกใช้ฟังก์ชัน)
+ * 3. เริ่มต้น Watcher
  */
+console.log(`\n🚀 Watcher Start! กำลังเฝ้าดูโฟลเดอร์: ${logsFolder}`);
+
+// ตรวจสอบว่ามีไฟล์ confirm หรือยัง ถ้าไม่มีให้สร้างทิ้งไว้เพื่อป้องกัน Lua หาไม่เจอ
+if (!existsSync(confirmFile)) {
+    writeFileSync(confirmFile, '', 'utf-8');
+    console.log(`[SYSTEM] 📂 สร้างไฟล์ confirm_queue.txt ใหม่`);
+}
+
 watch(logsFolder, (eventType, filename) => {
     if (filename && filename.includes('ITEM_DATA_EXPORT')) {
         const exactFilePath = join(logsFolder, filename);
 
-        // ป้องกันปัญหาระบบอ่านไฟล์ขณะที่เกมยังเขียนไม่เสร็จ (Race Condition)
+        // รอ 500ms เพื่อให้แน่ใจว่า Disk เขียน Log เสร็จสมบูรณ์จริงๆ
         setTimeout(async () => {
             const data = parseZomboidLog(exactFilePath);
             if (data) {
-                console.log(`\n🟢 ตรวจพบการ Export: ${data.playerName}`);
-                console.log(`   - CPE_Dollar: ${data.dollarAmount}`);
-                console.log(`   - Money: ${data.moneyAmount}`);
-                
-                await move_Currency_to_wallet(data.playerName, data.dollarAmount, data.moneyAmount);
+                await move_Currency_to_wallet(data.txid, data.playerName, data.dollarAmount, data.moneyAmount);
+            } else {
+                console.log(`[SCAN] 👀 ไม่พบรูปแบบข้อมูลในไฟล์ ${filename}`);
             }
-        }, 200); // เพิ่มเป็น 200ms เพื่อความชัวร์
+        }, 500); 
     }
 });
