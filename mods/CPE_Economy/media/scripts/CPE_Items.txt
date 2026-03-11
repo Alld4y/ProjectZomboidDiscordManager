@@ -1,0 +1,13 @@
+module Base
+{
+    item CPE_Dollar
+    {
+        Type = Normal,
+        DisplayCategory = Item, 
+        DisplayName = CPE Dollar,
+        Icon = CPE_Dollar,
+        Weight = 0.001,
+        CanBeStacked = true,
+        Tooltip = "ธนบัตรสกุลเงิน CPE ใช้สำหรับซื้อขายแลกเปลี่ยน",
+    }
+}

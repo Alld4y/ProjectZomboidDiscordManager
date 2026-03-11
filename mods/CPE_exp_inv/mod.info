@@ -1,0 +1,4 @@
+name=CPE exp_inv
+id=CPE_exp_inv
+description=Custom tool for checking and removing items via RCON.
+poster=poster.png
