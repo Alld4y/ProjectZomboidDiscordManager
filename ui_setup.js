@@ -5,12 +5,12 @@ export const embedColor = 0x0099FF;
 // 💰 รวมราคาสินค้าไว้ที่นี่ที่เดียว
 export const shopPrices = {
     CPE_Dollar: 2, 
-    bigHikingBag: 500,
-    baseballBatNails: 300,
-    armyBoots: 400,
-    camoJacket: 360,
-    firemanJacket: 500,
-    crashHelmet: 500,
+    bigHikingBag: 400,
+    baseballBatNails: 200,
+    armyBoots: 300,
+    camoJacket: 300,
+    firemanJacket: 400,
+    crashHelmet: 400,
     cigarette: 200,
     skill_rc_book: 400
 };
