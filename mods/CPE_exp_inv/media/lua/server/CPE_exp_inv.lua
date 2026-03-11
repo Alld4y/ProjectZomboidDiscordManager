@@ -245,14 +245,14 @@ Events.OnTick.Add(checkDeleteQueue)
 -- ฟังก์ชันสำหรับเพิ่มเงินให้ซอมบี้ตอนตาย
 local function DropCPEDollarFromZombie(zombie)
     -- 1. กำหนดโอกาสดรอป (ตั้งไว้ที่ 25%)
-    local dropChance = 45 -- เปอร์เซ็นต์โอกาสดรอป (เช่น 40 หมายถึง 40% โอกาสดรอป)
+    local dropChance = 33.33 -- เปอร์เซ็นต์โอกาสดรอป (เช่น 40 หมายถึง 40% โอกาสดรอป)
     local rand = ZombRand(1, 101)
     -- ZombRand(1, 101) จะสุ่มเลขตั้งแต่ 1 ถึง 100
-    if rand <= dropChance and rand > 35 then
+    if rand <= dropChance and rand > 23.33 then
         
         -- 2. สุ่มจำนวนเงินที่จะดรอป (เช่น ดรอปทีละ 1 ถึง 5 ใบ)
         -- ZombRand(1, 6) จะสุ่มเลข 1, 2, 3, 4, 5
-        local amount = ZombRand(10, 21) 
+        local amount = ZombRand(11, 16) 
         
         -- ดึงข้อมูลกระเป๋าของซอมบี้ตัวที่ตาย
         local inv = zombie:getInventory()
@@ -264,8 +264,8 @@ local function DropCPEDollarFromZombie(zombie)
         
         -- (Option) ใส่ Print ไว้เช็คใน Log ฝั่ง Server ได้ว่าดรอปสำเร็จไหม
         -- print("💰 ซอมบี้ดรอปเงิน CPE Dollar จำนวน " .. tostring(amount) .. " ใบ!")
-    elseif rand <= dropChance and rand <= 35 then
-        local amount = ZombRand(1, 6) 
+    elseif rand <= dropChance and rand <= 23.33 then
+        local amount = ZombRand(1, 11) 
         local inv = zombie:getInventory()
         for i = 1, amount do
             inv:AddItem("Base.CPE_Dollar")
