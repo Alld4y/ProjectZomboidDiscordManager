@@ -194,7 +194,7 @@ client.on('interactionCreate', async (interaction) => {
             });
         } else {
             interaction.reply({
-                content: `❌ You dont have enough CPE Dollars.`,
+                content: `❌ ยอดเงินในกระเป๋าไม่เพียงพอ คุณมี ${player_data.coin > 1 ? player_data.coin + " Coins" : player_data.coin + " Coin"}`,
                 flags: [MessageFlags.Ephemeral]
             });
         }
@@ -243,12 +243,12 @@ client.on('interactionCreate', async (interaction) => {
         const modal = new ModalBuilder()
             .setCustomId('buy_cpe_dollar_modal')
             .setTitle('ซื้อ CPE_Dollar');
-
+        const playerCoin = (await query(`SELECT coin FROM public.data WHERE discord_id = $1`, [interaction.user.id])).rows[0].coin;
         const amountInput = new TextInputBuilder()
             .setCustomId('cpe_dollar_amount_input')
-            .setLabel("จำนวน CPE_Dollar (2 Coin = 1 CPE_Dollar)")
+            .setLabel("จำนวน CPE Dollar (2 Coin = 1 CPE_Dollar) ")
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder('เช่น 10')
+            .setPlaceholder(`คุณมี ${playerCoin > 1 ? playerCoin + " Coins" : playerCoin + " Coin"}`)
             .setRequired(true);
 
         modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
@@ -434,7 +434,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (playerCoin < amount * 2) {
-                return interaction.reply({ content: `❌ ยอดเงินในกระเป๋าไม่เพียงพอ คุณมี ${playerCoin} coins`, flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: `❌ ยอดเงินในกระเป๋าไม่เพียงพอ คุณมี ${playerCoin > 1 ? playerCoin + " Coins" : playerCoin + " Coin"}`, flags: [MessageFlags.Ephemeral] });
             }
 
             await query(`UPDATE public.data SET coin = coin - $1 WHERE discord_id = $2`, [amount * 2, discordId]);

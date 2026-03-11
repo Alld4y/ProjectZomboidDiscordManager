@@ -11,7 +11,7 @@ export const shopPrices = {
     camoJacket: 360,
     firemanJacket: 500,
     crashHelmet: 500,
-    cigarette: 300,
+    cigarette: 200,
     skill_rc_book: 400
 };
 
