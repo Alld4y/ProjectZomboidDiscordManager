@@ -23,10 +23,12 @@ import {
     setupBotCommandChannel, 
     setupBagBotShopChannel, 
     setupMaleeBotShopChannel, 
-    setupClothingBotShopChannel 
+    setupClothingBotShopChannel,
+    setupGeneralBotShopChannel,
+    setupRoleClaimChannel
 } from './ui_setup.js';
 
-const welcomePack_value = 500;
+const welcomePack_value = 500; // จำนวนเงินที่ให้เมื่อรับ Welcome Pack
 
 const client = new Client({
     intents: [
@@ -53,47 +55,98 @@ async function sendCommand(cmd) {
     }
 }
 
-client.once('ready', () => {
+// --- Helper: Check if Player is Online ---
+async function checkPlayerOnline(playerName) {
+    const res = await sendCommand("players");
+    if (!res) return false;
+
+    // ตัดแค่ช่องว่างหัว-ท้าย เพราะ PZ Username ซีเรียสเรื่องตัวพิมพ์เล็ก-ใหญ่
+    const targetName = playerName.trim();
+
+    const onlinePlayers = res.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.startsWith('-')) 
+        // ลบแค่เครื่องหมายลบข้างหน้าออก และเก็บ Case เดิมไว้
+        .map(line => line.replace(/^-/, '').trim());
+
+    console.log(`Checking if player "${targetName}" is online among:`, onlinePlayers);
+    
+    // การเปรียบเทียบตรงนี้จะเป็น Case-sensitive ทันที
+    return onlinePlayers.includes(targetName);
+}
+
+client.once('clientReady', () => { 
     console.log(`✅ Bot ${client.user.tag} is Online!`);
-    sendCommand('servermsg "System: Node.js Bot is now Online!"');
+    sendCommand('servermsg "System: Discord Bot is now Online!"');
 });
 
 // --- Message Commands ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    if (message.content === '!setup-reg') {
-        await setupRegisterChannel(message);
-        await message.delete();
-    }
-    if (message.content === '!setup-botcmd') {
-        await setupBotCommandChannel(message);
-        await message.delete();
-    }
-    if (message.content === '!setup-bag-bs') {
-        await setupBagBotShopChannel(message);
-        await message.delete();
-    }
-    if (message.content === '!setup-malee-bs') {
-        await setupMaleeBotShopChannel(message);
-        await message.delete();
-    }
-    if (message.content === '!setup-clothing-bs') {
-        await setupClothingBotShopChannel(message);
-        await message.delete();
+    // 🛡️ 1. จัดการกลุ่มคำสั่ง Setup (เฉพาะ Moderator/Admin)N
+    const setupCommands = [
+        '!setup-gnr-bs', '!setup-reg', '!setup-botcmd', 
+        '!setup-bag-bs', '!setup-malee-bs', '!setup-clothing-bs', '!setup-role'
+    ];
+
+    if (message.content === '!setup-role') await setupRoleClaimChannel(message);
+
+    if (setupCommands.includes(message.content)) {
+        // เช็คสิทธิ์: ต้องมีสิทธิ์จัดการเซิร์ฟเวอร์ (Manage Server)
+        if (!message.member.permissions.has('ManageGuild')) {
+            const reply = await message.reply({ 
+                content: '❌ เฉพาะแอดมินหรือมอดเดอเรเตอร์เท่านั้นที่ใช้คำสั่งตั้งค่าได้ครับ!', 
+                flags: [MessageFlags.Ephemeral] 
+            });
+            // ลบคำสั่งที่พิมพ์มาเพื่อความสะอาด (ถ้าบอทมีสิทธิ์)
+            return setTimeout(() => message.delete().catch(() => {}), 3000);
+        }
+
+        // รันฟังก์ชันตามคำสั่งที่พิมพ์
+        if (message.content === '!setup-gnr-bs') await setupGeneralBotShopChannel(message);
+        else if (message.content === '!setup-reg') await setupRegisterChannel(message);
+        else if (message.content === '!setup-botcmd') await setupBotCommandChannel(message);
+        else if (message.content === '!setup-bag-bs') await setupBagBotShopChannel(message);
+        else if (message.content === '!setup-malee-bs') await setupMaleeBotShopChannel(message);
+        else if (message.content === '!setup-clothing-bs') await setupClothingBotShopChannel(message);
+
+        // ลบข้อความคำสั่งหลังจากตั้งค่าเสร็จ
+        await message.delete().catch(() => {});
+        return;
     }
 
+    // 🗑️ 2. คำสั่ง !clear (คงเดิมไว้และเพิ่มการป้องกัน Error)
+    if (message.content.startsWith('!clear')) {
+        if (!message.member.permissions.has('ManageMessages')) {
+            return message.reply({ content: '❌ คุณไม่มีสิทธิ์ลบข้อความครับ!', flags: [MessageFlags.Ephemeral] });
+        }
+
+        const args = message.content.split(' ');
+        const amount = args[1] ? parseInt(args[1]) : 100;
+
+        if (isNaN(amount) || amount < 1 || amount > 100) {
+            return message.reply({ content: '❌ กรุณาใส่ตัวเลขระหว่าง 1-100', flags: [MessageFlags.Ephemeral] });
+        }
+
+        try {
+            const deleted = await message.channel.bulkDelete(amount, true);
+            const replyMsg = await message.channel.send(`ลบหน้าต่าง UI เก่าทิ้งไป ${deleted.size} ข้อความ`);
+            setTimeout(() => replyMsg.delete().catch(() => {}), 3000);
+        } catch (err) {
+            console.error(err);
+            message.channel.send('❌ เกิดข้อผิดพลาด ไม่สามารถลบข้อความได้');
+        }
+        return;
+    }
+
+    // 🛒 3. คำสั่งทั่วไปสำหรับผู้เล่น (!shop, !status)
     if (message.content === '!shop') {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('open_reg_modal')
                 .setLabel('ลงทะเบียนตัวละคร')
                 .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId('buy_axe_btn')
-                .setLabel(`ซื้อขวาน (${shopPrices.axe})`)
-                .setEmoji('🪓')
-                .setStyle(ButtonStyle.Success)
         );
 
         await message.reply({
@@ -106,19 +159,29 @@ client.on('messageCreate', async (message) => {
         const res = await sendCommand("players");
         message.reply(`🌐 รายชื่อคนในเซิร์ฟเวอร์:\n${res || "ติดต่อเซิร์ฟเวอร์ไม่ได้"}`);
     }
+    
+    
+
 });
 
 // --- Interaction Handling (Buttons & Modals) ---
 client.on('interactionCreate', async (interaction) => {
 
-    // Helper ย่อยสำหรับเช็คยอดเงินตอนซื้อของ (ลดโค้ดซ้ำ)
     const handlePurchase = async (price, itemID, itemName) => {
         const res = await query(`SELECT player_name, coin FROM public.data WHERE discord_id = $1`, [interaction.user.id]);
         if (res.rowCount === 0) {
-            return interaction.reply({ content: "❌ ไม่พบข้อมูลการลงทะเบียนในระบบ", flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: "❌ ไม่พบข้อมูลการลงทะเบียนในระบบ", flags: [MessageFlags.Ephemeral] });
         }
         
         const player_data = res.rows[0];
+
+        const isOnline = await checkPlayerOnline(player_data.player_name);
+        if (!isOnline) {
+            return interaction.reply({ 
+                content: `❌ การสั่งซื้อล้มเหลว: ตัวละคร **${player_data.player_name}** ไม่ได้ออนไลน์อยู่ในเซิร์ฟเวอร์\n*(กรุณาเข้าเกมก่อนกดซื้อสินค้าเพื่อป้องกันไอเทมสูญหาย)*`, 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
         
         if (player_data.coin >= price) {
             await sendCommand(`additem "${player_data.player_name}" ${itemID} 1`);
@@ -127,25 +190,95 @@ client.on('interactionCreate', async (interaction) => {
             
             interaction.reply({
                 content: `✅ ส่ง ${itemName} ให้ตัวละคร **${player_data.player_name}** แล้ว!\nยอดเงินคงเหลือ: ${newCoin} CPE Dollars`,
-                flags: MessageFlags.Ephemeral
+                flags: [MessageFlags.Ephemeral]
             });
         } else {
             interaction.reply({
                 content: `❌ You dont have enough CPE Dollars.`,
-                flags: MessageFlags.Ephemeral
+                flags: [MessageFlags.Ephemeral]
             });
         }
     };
 
+    if (interaction.isButton() && interaction.customId === 'claim_cpe_pjz_role') {
+    const roleName = "CPE_PJZ";
+    // ค้นหา Role ในเซิร์ฟเวอร์
+    const role = interaction.guild.roles.cache.find(r => r.name === roleName);
+
+    if (!role) {
+        return interaction.reply({ 
+            content: `❌ ไม่พบยศ **${roleName}** ในเซิร์ฟเวอร์นี้ (กรุณาให้ Admin สร้างยศก่อน)`, 
+            flags: [MessageFlags.Ephemeral] 
+        });
+    }
+
+    try {
+        // เช็คว่าเขามียศอยู่แล้วหรือยัง
+        if (interaction.member.roles.cache.has(role.id)) {
+            return interaction.reply({ 
+                content: `✅ คุณมียศ **${roleName}** อยู่แล้วครับ!`, 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
+
+        // มอบยศ
+        await interaction.member.roles.add(role);
+        await interaction.reply({ 
+            content: `🎉 ยินดีด้วย! คุณได้รับยศ **${roleName}** เรียบร้อยแล้ว`, 
+            flags: [MessageFlags.Ephemeral] 
+        });
+
+    } catch (err) {
+        console.error("Role Claim Error:", err);
+        interaction.reply({ 
+            content: '❌ บอทไม่มีสิทธิ์มอยยศให้ (โปรดเช็คว่า Role ของบอทอยู่สูงกว่า Role ที่จะมอบ)', 
+            flags: [MessageFlags.Ephemeral] 
+        });
+    }
+}
+
     // ***************** BOT SHOP *******************
+    // General Shop
+    if (interaction.isButton() && interaction.customId === 'buy_CPE_Dollar') {
+        const modal = new ModalBuilder()
+            .setCustomId('buy_cpe_dollar_modal')
+            .setTitle('ซื้อ CPE_Dollar');
+
+        const amountInput = new TextInputBuilder()
+            .setCustomId('cpe_dollar_amount_input')
+            .setLabel("จำนวน CPE_Dollar (2 Coin = 1 CPE_Dollar)")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('เช่น 10')
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
+        await interaction.showModal(modal);
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_cigarette') {
+        await handlePurchase(shopPrices.cigarette, 'Base.Cigarettes', 'Cigarette');
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_skill_rc_book') {
+        await handlePurchase(shopPrices.skill_rc_book, 'Base.SkillRecoveryBoundJournal', 'Bound Journal');
+    }
+
+    // Bag Shop
     if (interaction.isButton() && interaction.customId === 'buy_bigHikingBag') {
         await handlePurchase(shopPrices.bigHikingBag, 'Base.Bag_BigHikingBag', 'Big Hiking Bag');
     }
-
+    // Malee Shop
     if (interaction.isButton() && interaction.customId === 'buy_baseballBatNails') {
         await handlePurchase(shopPrices.baseballBatNails, 'Base.BaseballBatNails', 'Baseball Bat Nails');
     }
-
+    // Clothing Shop
+    if (interaction.isButton() && interaction.customId === 'buy_camoJacket') {
+        await handlePurchase(shopPrices.camoJacket, `Base.Jacket_ArmyCamo${Math.random() > 0.5 ? 'Green' : 'Desert'}`, 'Jacket - Hunting Camo');
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_firemanJacket') {
+        await handlePurchase(shopPrices.firemanJacket, 'Base.Jacket_Fireman', 'Jacket - Fireman');
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_crashHelmet') {
+        await handlePurchase(shopPrices.crashHelmet, 'Base.Hat_CrashHelmetFULL', 'Crash Helmet Full');
+    }
     if (interaction.isButton() && interaction.customId === 'buy_armyBoot') {
         await handlePurchase(shopPrices.armyBoots, 'Base.Shoes_ArmyBoots', 'Army Boots');
     }
@@ -154,12 +287,12 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.isButton() && interaction.customId === 'check_wallet') {
         const res = await query(`SELECT player_name, coin FROM public.data WHERE discord_id = $1`, [interaction.user.id]);
-        if (res.rowCount === 0) return interaction.reply({ content: "ยังไม่ได้ลงทะเบียน", flags: MessageFlags.Ephemeral });
+        if (res.rowCount === 0) return interaction.reply({ content: "ยังไม่ได้ลงทะเบียน", flags: [MessageFlags.Ephemeral] });
         
         const res_data = res.rows[0];
         interaction.reply({
             content: `💰 **${res_data.player_name}**'s balance: ${res_data.coin} ${res_data.coin > 1 ? "coins" : "coin"}`,
-            flags: MessageFlags.Ephemeral
+            flags: [MessageFlags.Ephemeral]
         });
     }
 
@@ -208,18 +341,29 @@ client.on('interactionCreate', async (interaction) => {
                 isWelcomePack: res.rows[0].is_welcomepack
             };
 
+            console.log(`Player ${player_data.ig_name} is trying to claim Welcome Pack. Already claimed? ${player_data.isWelcomePack}`);
+
             if (player_data.isWelcomePack === true) {
-                return interaction.reply({ content: `❌ Player **${player_data.ig_name}** has already claimed the Welcome Pack.`, flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: `❌ Player **${player_data.ig_name}** ได้รับ Welcome Pack ไปแล้วครับ`, flags: [MessageFlags.Ephemeral] });
+            }
+
+            const isOnline = await checkPlayerOnline(player_data.ig_name);
+            if (!isOnline) {
+                return interaction.reply({ 
+                    content: `❌ การรับของล้มเหลว: ตัวละคร **${player_data.ig_name}** ไม่ได้ออนไลน์อยู่ในเซิร์ฟเวอร์\n*(กรุณาเข้าเกมก่อนกดรับ Welcome Pack)*`, 
+                    flags: [MessageFlags.Ephemeral] 
+                });
             }
 
             for (let i = 0; i < welcomePack_item.length; i++) {
                 await sendCommand(`additem "${player_data.ig_name}" ${welcomePack_item[i][0]} ${welcomePack_item[i][1]}`);
             }
 
-            await query(`UPDATE public.data SET is_welcomepack = $1, coin = $2 WHERE discord_id = $3`, [true, welcomePack_value, discord_id]);
+            // อัปเดตสถานะการรับของ แต่ไม่ต้องบวกเงินเพิ่มแล้ว
+            await query(`UPDATE public.data SET is_welcomepack = $1, coin=$2 WHERE discord_id = $3`, [true, welcomePack_value, discord_id]);
 
             await interaction.reply({
-                content: `✅ Sending Welcome Pack to **${player_data.ig_name}**\nReceived ${welcomePack_value} coins to your wallet!`,
+                content: `✅ ส่งไอเทม Welcome Pack ให้ตัวละคร **${player_data.ig_name}** เรียบร้อยแล้ว!`,
                 flags: [MessageFlags.Ephemeral]
             });
         } catch (err) {
@@ -230,19 +374,77 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    if (interaction.isButton() && interaction.customId === 'buy_axe_btn') {
-        await handlePurchase(shopPrices.axe, 'Base.Axe', 'Axe');
-    }
-
     if (interaction.isModalSubmit() && interaction.customId === 'reg_modal') {
-        const pzName = interaction.fields.getTextInputValue('pz_name_input');
+        const pzName = interaction.fields.getTextInputValue('pz_name_input').trim();
         const discordId = interaction.user.id;
+        
         try {
+            // 1. เช็คว่า Discord นี้ลงทะเบียนไปหรือยัง
+            const checkDiscord = await query(`SELECT player_name FROM public.data WHERE discord_id = $1`, [discordId]);
+            if (checkDiscord.rowCount > 0) {
+                return interaction.reply({ 
+                    content: `❌ คุณลงทะเบียนไปแล้วด้วยชื่อ **${checkDiscord.rows[0].player_name}**\n*(1 Discord ผูกได้แค่ 1 ตัวละคร)*`, 
+                    flags: [MessageFlags.Ephemeral] 
+                });
+            }
+
+            // 2. เช็คว่าชื่อในเกมนี้ มีคนใช้งานไปแล้วหรือยัง (เช็คแบบฉลาด ไม่สนตัวพิมพ์เล็กใหญ่)
+            const checkName = await query(`SELECT discord_id FROM public.data WHERE LOWER(player_name) = LOWER($1)`, [pzName]);
+            if (checkName.rowCount > 0) {
+                return interaction.reply({ 
+                    content: `❌ ชื่อตัวละคร **${pzName}** มีผู้เล่นอื่นใช้งานแล้วครับ!\n*(กรุณาเปลี่ยนชื่อตัวละครใหม่ในเกม แล้วค่อยมากดลงทะเบียนอีกครั้ง)*`, 
+                    flags: [MessageFlags.Ephemeral] 
+                });
+            }
+
+            // 3. ถ้าผ่านทั้งหมด ค่อยให้ลงทะเบียน
             await query(`INSERT INTO public.data (discord_id, player_name, coin) VALUES ($1, $2, $3);`, [discordId, pzName, 0]);
-            await interaction.reply({ content: `✅ ลงทะเบียนชื่อ **${pzName}** สำเร็จ!`, flags: MessageFlags.Ephemeral });
+            await interaction.reply({ content: `✅ ลงทะเบียนชื่อ **${pzName}** สำเร็จ! ขอให้สนุกกับ Project Zomboid นะครับ`, flags: [MessageFlags.Ephemeral] });
+            const registered_role = interaction.guild.roles.cache.find(r => r.name === "Registered");
+            await interaction.member.roles.add(registered_role);
         } catch (err) {
             console.error(err);
-            await interaction.reply({ content: '❌ บันทึกข้อมูลไม่สำเร็จ อาจจะลงทะเบียนไปแล้ว', flags: MessageFlags.Ephemeral });
+            await interaction.reply({ content: '❌ บันทึกข้อมูลไม่สำเร็จ เกิดข้อผิดพลาดในระบบฐานข้อมูล', flags: [MessageFlags.Ephemeral] });
+        }
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'buy_cpe_dollar_modal') {
+        const amount = parseInt(interaction.fields.getTextInputValue('cpe_dollar_amount_input'));
+        const discordId = interaction.user.id;
+        
+        if (isNaN(amount) || amount <= 0) {
+            return interaction.reply({ content: '❌ กรุณากรอกจำนวนเป็นตัวเลขที่มากกว่า 0', flags: [MessageFlags.Ephemeral] });
+        }
+
+        try {
+            const res = await query(`SELECT player_name, coin FROM public.data WHERE discord_id = $1`, [discordId]);
+            if (res.rowCount === 0) {
+                return interaction.reply({ content: "❌ ไม่พบข้อมูลการลงทะเบียนในระบบ", flags: [MessageFlags.Ephemeral] });
+            }
+
+            const playerName = res.rows[0].player_name;
+            const playerCoin = res.rows[0].coin;
+
+            const isOnline = await checkPlayerOnline(playerName);
+            if (!isOnline) {
+                return interaction.reply({ 
+                    content: `❌ การทำรายการล้มเหลว: ตัวละคร **${playerName}** ไม่ได้ออนไลน์อยู่ในเซิร์ฟเวอร์\n*(กรุณาเข้าเกมก่อนกดซื้อเพื่อป้องกันเงินสูญหาย)*`, 
+                    flags: [MessageFlags.Ephemeral] 
+                });
+            }
+
+            if (playerCoin < amount * 2) {
+                return interaction.reply({ content: `❌ ยอดเงินในกระเป๋าไม่เพียงพอ คุณมี ${playerCoin} coins`, flags: [MessageFlags.Ephemeral] });
+            }
+
+            await query(`UPDATE public.data SET coin = coin - $1 WHERE discord_id = $2`, [amount * 2, discordId]);
+            await sendCommand(`additem "${playerName}" Base.CPE_Dollar ${amount}`);
+            await interaction.reply({ content: `✅ ซื้อ CPE_Dollar จำนวน ${amount} สำเร็จ!`, flags: [MessageFlags.Ephemeral] });
+        } catch (err) {
+            console.error("Buy CPE_Dollar Error:", err);
+            if (!interaction.replied) {
+                await interaction.reply({ content: "เกิดข้อผิดพลาดภายในระบบ", flags: [MessageFlags.Ephemeral] });
+            }
         }
     }
 });
@@ -253,64 +455,73 @@ client.login(process.env.BOT_TOKEN).catch(err => console.error("❌ Discord Logi
 // 🔄 Log Watcher (ระบบเฝ้าดูไอเทม)
 // ==========================================
 
-const move_CPE_Dollar_to_wallet = async (player_name, data) => {
-    const items = data[player_name];
-    if (items) {
-        let dollar_count = 0;
-        for (let i = 0; i < items.length; i++) {
-            if (items[i] === 'Base.CPE_Dollar') {
-                dollar_count += 1;
-            }
-        }
-        if (dollar_count > 0) {
-            console.log(`Player ${player_name} has ${dollar_count} Dollars`);
-            await query(`UPDATE public.data SET coin = coin + $1 WHERE player_name = $2`, [dollar_count, player_name]);
-            deleteItemFromPlayer(player_name, 'Base.CPE_Dollar', dollar_count);
+
+// สมมติว่ามี function query และ deleteItemFromPlayer เตรียมไว้แล้ว
+const logsFolder = 'C:\\Users\\Mhek3\\Zomboid\\Logs';
+
+/**
+ * 1. ฟังก์ชันจัดการ Update เงินเข้าฐานข้อมูล
+ */
+const move_CPE_Dollar_to_wallet = async (playerName, dollarCount) => {
+    if (playerName && dollarCount > 0) {
+        try {
+            console.log(`[DB] กำลังเพิ่มเงิน ${dollarCount * 2} Coins ให้ผู้เล่น: ${playerName}`);
+            
+            // อัปเดตเงินใน Database
+            await query(`UPDATE public.data SET coin = coin + $1 WHERE player_name = $2`, [dollarCount * 2, playerName]);
+            
+            // สั่งลบไอเทมในเกม (ส่งชื่อผู้เล่น, ชื่อไอเทม, และจำนวนที่นับได้จาก Log)
+            deleteItemFromPlayer(playerName, 'Base.CPE_Dollar', dollarCount);
+            
+            console.log(`✅ สำเร็จ: อัปเดตกระเป๋าเงินของ ${playerName} เรียบร้อย`);
+        } catch (error) {
+            console.error(`❌ DB Error: ${error.message}`);
         }
     }
 };
 
-const logsFolder = 'C:\\Users\\Mhek3\\Zomboid\\Logs';
-
+/**
+ * 2. ฟังก์ชันอ่าน Log และ Parse ข้อมูล [PLAYER] กับ [AMOUNT]
+ */
 function parseZomboidLog(targetFilePath) {
-    if (!existsSync(targetFilePath)) {
-        console.log(`⚠️ อ่านไฟล์ไม่ได้ หรือหาไฟล์ไม่พบ: ${targetFilePath}`);
-        return null;
-    }
+    if (!existsSync(targetFilePath)) return null;
 
     const fileContent = readFileSync(targetFilePath, 'utf-8');
-    const lines = fileContent.split(/\r?\n/);
-    const playersData = {};
-    let player_name;
-
-    lines.forEach((line) => {
-        if (line.includes('[PLAYER]:') && line.includes('[ITEMS]:')) {
-            const match = line.match(/\[PLAYER\]:(.*?)\s+\[ITEMS\]:(.*)/);
-            if (match) {
-                player_name = match[1].trim();
-                let itemsString = match[2].trim();
-                itemsString = itemsString.replace(/\.$/, '').trim();
-                playersData[player_name] = itemsString ? itemsString.split(',') : [];
-            }
+    const lines = fileContent.trim().split(/\r?\n/);
+    
+    // อ่านบรรทัดล่าสุด (เพื่อป้องกันการอ่านซ้ำบรรทัดเก่าในไฟล์เดิม)
+    const lastLine = lines[lines.length - 1];
+    
+    if (lastLine && lastLine.includes('[PLAYER]:') && lastLine.includes('[AMOUNT]:')) {
+        // ใช้ Regex ดึงค่า Name และ Amount
+        const match = lastLine.match(/\[PLAYER\]:(.*?)\s+\[AMOUNT\]:(\d+)/);
+        if (match) {
+            return {
+                playerName: match[1].trim(),
+                amount: parseInt(match[2], 10)
+            };
         }
-    });
-    return { player_name: player_name, playersData: playersData };
+    }
+    return null;
 }
 
-console.log(`\n👀 กำลังเฝ้าดูการเคลื่อนไหวในโฟลเดอร์: ${logsFolder}...`);
+/**
+ * 3. เริ่มต้น Watch ไฟล์
+ */
+console.log(`\n🚀 Watcher Start! กำลังเฝ้าดูโฟลเดอร์: ${logsFolder}`);
 
 watch(logsFolder, (eventType, filename) => {
+    // กรองเฉพาะไฟล์ที่มีชื่อ ITEM_DATA_EXPORT
     if (filename && filename.includes('ITEM_DATA_EXPORT')) {
         const exactFilePath = join(logsFolder, filename);
-        console.log(`\n🟢 ตรวจพบการทำงานที่ไฟล์จริงชื่อ: ${filename}`);
 
-        setTimeout(() => {
-            const updatedData = parseZomboidLog(exactFilePath);
-            if (updatedData && Object.keys(updatedData.playersData).length > 0) {
-                console.log("=== 📦 ข้อมูลไอเทมล่าสุด ===");
-                console.log(JSON.stringify(updatedData, null, 2));
-                move_CPE_Dollar_to_wallet(updatedData.player_name, updatedData.playersData);
+        // รอเล็กน้อยให้ไฟล์เขียนเสร็จ (I/O Buffer)
+        setTimeout(async () => {
+            const data = parseZomboidLog(exactFilePath);
+            if (data) {
+                console.log(`\n🟢 ตรวจพบการ Export: ${data.playerName} (จำนวน ${data.amount})`);
+                await move_CPE_Dollar_to_wallet(data.playerName, data.amount);
             }
-        }, 50);
+        }, 100);
     }
 });
