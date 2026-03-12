@@ -14,7 +14,7 @@ import {
 import { query } from "./db.js";
 import { existsSync, readFileSync, watch } from 'fs';
 import { join } from 'path';
-import deleteItemFromPlayer from './delete_item.js';
+import { initIPChecker } from './ip_check.js';
 
 // 📦 Import หน้าตาและราคาจากไฟล์ ui_setup.js
 import { 
@@ -25,7 +25,8 @@ import {
     setupMaleeBotShopChannel, 
     setupClothingBotShopChannel,
     setupGeneralBotShopChannel,
-    setupRoleClaimChannel
+    setupRoleClaimChannel,
+    setupVehiclePartsBotShopChannel
 } from './ui_setup.js';
 
 const welcomePack_value = 500; // จำนวนเงินที่ให้เมื่อรับ Welcome Pack
@@ -78,6 +79,7 @@ async function checkPlayerOnline(playerName) {
 client.once('clientReady', () => { 
     console.log(`✅ Bot ${client.user.tag} is Online!`);
     sendCommand('servermsg "System: Discord Bot is now Online!"');
+    initIPChecker(client);
 });
 
 // --- Message Commands ---
@@ -87,7 +89,8 @@ client.on('messageCreate', async (message) => {
     // 🛡️ 1. จัดการกลุ่มคำสั่ง Setup (เฉพาะ Moderator/Admin)N
     const setupCommands = [
         '!setup-gnr-bs', '!setup-reg', '!setup-botcmd', 
-        '!setup-bag-bs', '!setup-malee-bs', '!setup-clothing-bs', '!setup-role'
+        '!setup-bag-bs', '!setup-malee-bs', '!setup-clothing-bs',
+        '!setup-role', '!setup-vp-bs'
     ];
 
     if (message.content === '!setup-role') await setupRoleClaimChannel(message);
@@ -110,6 +113,7 @@ client.on('messageCreate', async (message) => {
         else if (message.content === '!setup-bag-bs') await setupBagBotShopChannel(message);
         else if (message.content === '!setup-malee-bs') await setupMaleeBotShopChannel(message);
         else if (message.content === '!setup-clothing-bs') await setupClothingBotShopChannel(message);
+        else if (message.content === '!setup-vp-bs') await setupVehiclePartsBotShopChannel(message);
 
         // ลบข้อความคำสั่งหลังจากตั้งค่าเสร็จ
         await message.delete().catch(() => {});
@@ -281,6 +285,13 @@ client.on('interactionCreate', async (interaction) => {
     }
     if (interaction.isButton() && interaction.customId === 'buy_armyBoot') {
         await handlePurchase(shopPrices.armyBoots, 'Base.Shoes_ArmyBoots', 'Army Boots');
+    }
+    // Vehicle Parts Shop
+    if (interaction.isButton() && interaction.customId === 'buy_petrolCan') {
+        await handlePurchase(shopPrices.petrolCan, 'Base.PetrolCan', 'Petrol Can');
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_petrolCanEmpty') {
+        await handlePurchase(shopPrices.petrolCanEmpty, 'Base.EmptyPetrolCan', 'Petrol Can (Empty)');
     }
 
     // **********************************************

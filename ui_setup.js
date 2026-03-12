@@ -12,7 +12,9 @@ export const shopPrices = {
     firemanJacket: 400,
     crashHelmet: 400,
     cigarette: 200,
-    skill_rc_book: 400
+    skill_rc_book: 400,
+    petrolCan: 1000,
+    petrolCanEmpty: 800
 };
 
 // ==========================================
@@ -147,6 +149,23 @@ export const setupClothingBotShopChannel = async (message) => {
     );
     const row = createRow(createButton('buy_armyBoot', `Army Boots : ${shopPrices.armyBoots}`, ButtonStyle.Success, '🛍️'));
     await message.channel.send({ embeds: [embed], components: [row] });
+};
+
+export const setupVehiclePartsBotShopChannel = async (message) => {
+    const PTcan_embed = createEmbed(
+        "Petrol Can",
+        "ถังน้ำมันที่ใช้สำหรับเติมน้ำมันให้กับยานพาหนะ (มีน้ำมัน)\n\nA petrol can is a container used for refueling vehicles (with fuel).",
+        "https://pzwiki.net/w/images/d/d2/GasCan_Model.png"
+    );
+    const PTcan_row = createRow(createButton('buy_petrolCan', `Petrol Can : ${shopPrices.petrolCan}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [PTcan_embed], components: [PTcan_row] });
+    const PTcanEmpty_embed = createEmbed(
+        "Petrol Can (Empty)",
+        "ถังน้ำมันที่ใช้สำหรับเติมน้ำมันให้กับยานพาหนะ (เปล่า)\n\nA petrol can is a container used for refueling vehicles (empty).",
+        "https://pzwiki.net/w/images/d/d2/GasCan_Model.png"
+    );
+    const PTcanEmpty_row = createRow(createButton('buy_petrolCanEmpty', `Petrol Can (Empty) : ${shopPrices.petrolCanEmpty}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [PTcanEmpty_embed], components: [PTcanEmpty_row] });
 };
 
 export async function setupRoleClaimChannel(message) {
