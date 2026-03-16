@@ -5,16 +5,20 @@ export const embedColor = 0x0099FF;
 // 💰 รวมราคาสินค้าไว้ที่นี่ที่เดียว
 export const shopPrices = {
     CPE_Dollar: 2, 
-    bigHikingBag: 400,
-    baseballBatNails: 200,
+    bigHikingBag: 500,
+    baseballBatNails: 250,
     armyBoots: 300,
     camoJacket: 300,
     firemanJacket: 400,
     crashHelmet: 400,
-    cigarette: 200,
+    cigarette: 300,
     skill_rc_book: 400,
-    petrolCan: 1000,
-    petrolCanEmpty: 800
+    petrolCan: 1200,
+    petrolCanEmpty: 1000,
+    axe: 600,
+    hacksaw: 400,
+    nightStick: 500
+
 };
 
 // ==========================================
@@ -50,10 +54,10 @@ export const setupRegisterChannel = async (message) => {
     const embed = createEmbed(
         '📝 ลงทะเบียนผู้เล่น Project Zomboid',
         `🔸 กรุณากดปุ่มด้านล่างเพื่อผูกบัญชี Discord เข้ากับชื่อตัวละครในเกม\n\n🔹 *หมายเหตุ: โปรดใช้ชื่อเดียวกับที่ใช้ในเซิร์ฟเวอร์ มีผลกับพิมพ์เล็กและพิมพ์ใหญ่\n\n🔸 Please click the button below to link your Discord account to your in-game character.
-\n🔹 *Note: Your name must match your in-game username exactly (Case-Sensitive). \n\n 🎁 รับ welcome pack \n -Coin x 500 (to wallet)\n-BeefJerky x 2\n-Baloney x 1\n-OrangeJuice x 2`
+\n🔹 *Note: Your name must match your in-game username exactly (Case-Sensitive). \n\n 🎁 รับ welcome pack \n -Coin x 500 (to wallet)\n-BeefJerky x 2\n-Baloney x 1\n-OrangeJuice x 2 \n\n **เข้าเกมและสร้างตัวละครก่อนกดรับ Welcome Pack\nEnter the game and create your character before claiming the Welcome Pack.**`
     );
     const row = createRow(
-        createButton('open_reg_modal', 'เริ่มการลงทะเบียน', ButtonStyle.Primary, '✍️'),
+        createButton('open_reg_modal', 'Register', ButtonStyle.Primary, '✍️'),
         createButton('welcomePack', 'Welcome Pack', ButtonStyle.Success, '🎁')
     );
     await message.channel.send({ embeds: [embed], components: [row] });
@@ -74,7 +78,7 @@ export const setupGeneralBotShopChannel = async (message) => {
         "สกุลเงินในเกมที่ใช้สำหรับซื้อของจากร้านค้า\n\nCPE_Dollar is the in-game currency used for purchasing items from the shop.",
         'http://alldaygrow.tplinkdns.com:8080/CPE_Dollar_large.png'
     );
-    const dollar_row = createRow(createButton('buy_CPE_Dollar', 'CPE_Dollar', ButtonStyle.Success, '🛍️'));
+    const dollar_row = createRow(createButton('buy_CPE_Dollar', `CPE_Dollar : ${shopPrices.CPE_Dollar}`, ButtonStyle.Success, '🛍️'));
     await message.channel.send({ embeds: [dollar_embed], components: [dollar_row] });
 
     const cigarette_embed = createEmbed(
@@ -86,7 +90,7 @@ export const setupGeneralBotShopChannel = async (message) => {
 
     const skill_rc_book_embed = createEmbed(
         "Bound Journal",
-        "หนังสือที่สามารถบันทึกทักษะและความรู้ต่างๆ ได้ คืนค่าประสบการณ์ 60%\n\nA book that can record various skills and knowledge. Restores 60% of experience.",
+        "หนังสือที่สามารถบันทึกทักษะและความรู้ต่างๆ ได้ คืนค่าประสบการณ์ 80%\n\nA book that can record various skills and knowledge. Restores 80% of experience.",
         "http://alldaygrow.tplinkdns.com:8080/bound_journal.png"
     );
     const skill_rc_book_row = createRow(createButton('buy_skill_rc_book', `Bound Journal : ${shopPrices.skill_rc_book}`, ButtonStyle.Success, '🛍️'));
@@ -110,7 +114,31 @@ export const setupMaleeBotShopChannel = async (message) => {
         'https://static.wikia.nocookie.net/projectzomboid/images/9/92/Spiked_baseball_bat_inv.png/revision/latest?cb=20110714001632'
     );
     const row = createRow(createButton('buy_baseballBatNails', `Baseball Bat Nail : ${shopPrices.baseballBatNails}`, ButtonStyle.Success, '🛍️'));
+    
     await message.channel.send({ embeds: [embed], components: [row] });
+    const axe_embed = createEmbed(
+        "Axe",
+        "ขวานเป็นอาวุธที่มีความเสียหายสูงและสามารถใช้ในการตัดไม้ได้\n\nAn axe is a weapon that deals high damage and can also be used for chopping wood.",
+        "http://alldaygrow.tplinkdns.com:8080/axe.png"
+    );
+    const axe_row = createRow(createButton('buy_axe', `Axe : ${shopPrices.axe}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [axe_embed], components: [axe_row] });
+    const nightStick_embed = createEmbed(
+        "Night Stick",
+        "กระบองไนท์สติกเป็นอาวุธที่มีความเสียหายปานกลางและสามารถใช้ในการป้องกันตัวได้\n\nA night stick is a weapon that deals moderate damage and can be used for self-defense.",
+        "https://pzwiki.net/w/images/3/3f/Nightstick_Model.png"
+    );
+    const nightStick_row = createRow(createButton('buy_nightStick', `Night Stick : ${shopPrices.nightStick}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [nightStick_embed], components: [nightStick_row] });
+    // const hacksaw_embed = createEmbed(
+    //     "Hacksaw",
+    //     "เลื่อยเหล็กเป็นเครื่องมือที่สามารถใช้ในการตัดโลหะและไม้ได้\n\nA hacksaw is a tool that can be used for cutting metal and wood.",
+    //     "https://pzwiki.net/w/images/b/ba/Hacksaw_Model.png"
+    // );
+    // const hacksaw_row = createRow(createButton('buy_hacksaw', `Hacksaw : ${shopPrices.hacksaw}`, ButtonStyle.Success, '🛍️'));
+    // await message.channel.send({ embeds: [hacksaw_embed], components: [hacksaw_row] });
+
+
 };
 
 export const setupClothingBotShopChannel = async (message) => {
@@ -172,13 +200,13 @@ export async function setupRoleClaimChannel(message) {
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('claim_cpe_pjz_role')
-            .setLabel('รับยศชาวแก๊ง CPE_PJZ')
+            .setLabel('Claim CPE_PJZ Role')
             .setStyle(ButtonStyle.Success)
             .setEmoji('🛡️')
     );
 
     await message.channel.send({
-        content: '## 🛡️ ยืนยันตัวตนรับยศผู้เล่น\nกดปุ่มด้านล่างเพื่อรับยศ **CPE_PJZ** เพื่อเข้าถึงห้องพิเศษและสถานะผู้เล่นในเซิร์ฟเวอร์!',
+        content: '## 🛡️ Welcome to CPE_PJZ! International Friendly xD\n🔸 กดปุ่มด้านล่างเพื่อรับยศ **CPE_PJZ** เพื่อเข้าถึงห้องพิเศษและสถานะผู้เล่นในเซิร์ฟเวอร์!\n🔸 Click the button below to claim the **CPE_PJZ** role\n\n เข้าห้อง  #📝register ',
         components: [row]
     });
 }

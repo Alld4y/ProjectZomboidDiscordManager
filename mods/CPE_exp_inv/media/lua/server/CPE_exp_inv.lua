@@ -1,100 +1,33 @@
 local exportCooldowns = {}
 local pendingTransactions = {} 
-local confirmFilePath = "confirm_queue.txt" -- เปลี่ยนมาใช้ชื่อไฟล์ตรงๆ (จะอยู่ในโฟลเดอร์ Lua ของตัวเกม)
+local confirmFilePath = "confirm_queue.txt"
 
--- ฟังก์ชันเสริมสำหรับหาตัวละครจากชื่อ
+-- ฟังก์ชันหาตัวละคร (รันได้ทั้ง Client และ Server)
 local function getPlayerByUsername(username)
     local players = getOnlinePlayers()
     for i=0, players:size()-1 do
         local player = players:get(i)
-        if player:getUsername() == username then
-            return player
-        end
+        if player:getUsername() == username then return player end
     end
     return nil
 end
 
-local function checkConfirmationAndRefund()
-    local currentTime = getTimestampMs()
-
-    -- 1. อ่านไฟล์ยืนยันจาก Bot
-    -- ใช้ getFileReader แบบค้นหาใน Sandbox ของ Zomboid
-    local fileReader = getFileReader(confirmFilePath, false)
-    
-    if fileReader then
-        local line = fileReader:readLine()
-        local foundInFile = {} -- เก็บ TXID ทั้งหมดที่เจอในไฟล์รอบนี้
-        
-        while line ~= nil do
-            -- ลบช่องว่างและตัวอักษรพิเศษ
-            local txid = line:gsub("%s+", "") 
-            if txid ~= "" then
-                foundInFile[txid] = true
-            end
-            line = fileReader:readLine()
-        end
-        fileReader:close()
-        
-        -- ตรวจสอบว่า TXID ที่เจอ ตรงกับรายการที่รออยู่ไหม
-        local confirmedAny = false
-        for txid, _ in pairs(foundInFile) do
-            if pendingTransactions[txid] then
-                pendingTransactions[txid] = nil -- ยืนยันสำเร็จ!
-                confirmedAny = true
-                -- print("DEBUG: Confirmed TXID: " .. txid) -- คุณจะเห็นข้อความนี้ใน Console (F11)
-            end
-        end
-        
-        -- ล้างไฟล์ "เฉพาะ" เมื่อมีการยืนยันสำเร็จแล้วเท่านั้น
-        if confirmedAny then
-            local fileWriter = getFileWriter(confirmFilePath, false, false)
-            if fileWriter then fileWriter:close() end
-        end
-    end
-
-    -- 2. วนลูปเช็ครายการที่ค้าง (Refund)
-    -- ใช้การ Copy ตารางเพื่อความปลอดภัยขณะลบข้อมูล (Prevent pairs error)
-    local toProcess = {}
-    for txid, _ in pairs(pendingTransactions) do
-        table.insert(toProcess, txid)
-    end
-
-    for _, txid in ipairs(toProcess) do
-        local data = pendingTransactions[txid]
-        if data and data.expireTime and currentTime > data.expireTime then
-            local player = getPlayerByUsername(data.username)
-            if player then
-                local inv = player:getInventory()
-                if inv then
-                    if data.dollar > 0 then
-                        for i = 1, data.dollar do inv:AddItem("Base.CPE_Dollar") end
-                    end
-                    if data.money > 0 then
-                        for i = 1, data.money do inv:AddItem("Base.Money") end
-                    end
-                    player:Say("System Error: Bot Confirmation Timeout!")
-                end
-            end
-            pendingTransactions[txid] = nil
-        end
-    end
-end
-
--- ฟังก์ชันหลักตอนกดคลิกขวา
+-- ==========================================
+-- [1] ฝั่ง CLIENT: จัดการ UI และการส่งข้อมูล
+-- ==========================================
 local function exportItemsLogic(playerObj)
-    if not playerObj then return end
+    if not playerObj or not isClient() then return end
     
     local username = playerObj:getUsername()
     local currentTime = getTimestampMs()
     
     if exportCooldowns[username] and (currentTime - exportCooldowns[username] < 30000) then
-        playerObj:Say("Please wait... " .. math.ceil((30000 - (currentTime - exportCooldowns[username])) / 1000) .. " seconds") return
+        playerObj:Say("Wait... " .. math.ceil((30000 - (currentTime - exportCooldowns[username])) / 1000) .. "s") return
     end
 
     local inventory = playerObj:getInventory()
     local items = inventory:getItems()
-    local dollarCount = 0
-    local moneyCount = 0
+    local dollarCount, moneyCount = 0, 0
     local itemsToRemove = {}
     
     for i = 0, items:size() - 1 do 
@@ -113,50 +46,106 @@ local function exportItemsLogic(playerObj)
     
     if dollarCount > 0 or moneyCount > 0 then
         local txid = tostring(currentTime) .. "_" .. username
-        
-        for _, item in ipairs(itemsToRemove) do
-            inventory:Remove(item)
-        end
+        for _, item in ipairs(itemsToRemove) do inventory:Remove(item) end
 
-        -- ปรับเวลาเป็น 20 วินาที (20000) เพื่อให้ระบบมีเวลาทำงาน
+        -- บันทึกรายการค้าง (Client จำไว้เพื่อรอ Refund ถ้า Server เงียบไป)
         pendingTransactions[txid] = {
-            username = username,
-            dollar = dollarCount,
-            money = moneyCount,
-            expireTime = currentTime + 5000 -- 5 วินาที (5000) เพื่อให้ระบบมีเวลาทำงานและยืนยันจาก Bot 
+            dollar = dollarCount, money = moneyCount,
+            expireTime = currentTime + 20000 -- ให้เวลาบอท 20 วินาที
         }
 
-        writeLog("ITEM_DATA_EXPORT", "[TXID]:" .. txid .. " [PLAYER]:" .. username .. " [CPE_DOLLAR]:" .. tostring(dollarCount) .. " [MONEY]:" .. tostring(moneyCount))
+        -- ส่งคำสั่งไป Server
+        sendClientCommand(playerObj, 'CPE_Wallet', 'WriteExportLog', {
+            txid = txid, dollar = dollarCount, money = moneyCount
+        })
         
         exportCooldowns[username] = currentTime
-
-        local totalCoins = (dollarCount * 2) + moneyCount
-        local coinStr = (totalCoins > 1) and "Coins" or "Coin"
-
-        if dollarCount == 0 then
-            playerObj:Say("Exporting " .. moneyCount .. " Money. Received " .. totalCoins .. " " .. coinStr)
-        elseif moneyCount == 0 then
-            playerObj:Say("Exporting " .. dollarCount .. " CPE Dollars. Received " .. totalCoins .. " " .. coinStr)
-        else
-            playerObj:Say("Exporting " .. dollarCount .. " CPE Dollars and " .. moneyCount .. " Money. Received " .. totalCoins .. " " .. coinStr)
-        end
+        playerObj:Say("Processing... Waiting for Bot.")
     else
         playerObj:Say("No items found!")
     end
 end
 
+-- ดักฟังคำยืนยันจาก Server
+local function OnServerCommand(module, command, args)
+    if module == 'CPE_Wallet' and command == 'ConfirmSuccess' then
+        if pendingTransactions[args.txid] then
+            pendingTransactions[args.txid] = nil -- ลบรายการค้างทิ้ง (เงินเข้าแล้ว!)
+            -- print("✅ Transaction Confirmed by Server: " .. args.txid)
+        end
+    end
+end
+
+-- ==========================================
+-- [2] ฝั่ง SERVER: จัดการไฟล์และส่งสัญญาณยืนยัน
+-- ==========================================
+local function checkServerConfirmation()
+    if isClient() then return end
+    local fileReader = getFileReader(confirmFilePath, false)
+    if not fileReader then return end
+
+    local line = fileReader:readLine()
+    local confirmedTXIDs = {}
+    while line ~= nil do
+        local txid = line:gsub("%s+", "")
+        if txid ~= "" then table.insert(confirmedTXIDs, txid) end
+        line = fileReader:readLine()
+    end
+    fileReader:close()
+
+    if #confirmedTXIDs > 0 then
+        for _, txid in ipairs(confirmedTXIDs) do
+            -- ส่งคำสั่งกลับไปหา Client ทุกคนที่มี TXID นี้ (ปกติจะมีแค่คนเดียว)
+            sendServerCommand('CPE_Wallet', 'ConfirmSuccess', {txid = txid})
+        end
+        -- ล้างไฟล์ยืนยัน
+        local fileWriter = getFileWriter(confirmFilePath, false, false)
+        if fileWriter then fileWriter:close() end
+    end
+end
+
+-- รับคำสั่งจาก Client เพื่อเขียน Log
+local function OnClientCommand(module, command, player, args)
+    if module == 'CPE_Wallet' and command == 'WriteExportLog' then
+        writeLog("ITEM_DATA_EXPORT", "[TXID]:" .. tostring(args.txid) .. " [PLAYER]:" .. player:getUsername() .. " [CPE_DOLLAR]:" .. tostring(args.dollar) .. " [MONEY]:" .. tostring(args.money))
+        print("[CPE SERVER] Log Written for: " .. player:getUsername())
+    end
+end
+
+-- ==========================================
+-- [3] EVENTS REGISTRATION
+-- ==========================================
 Events.OnFillWorldObjectContextMenu.Add(function(player, context, worldobjects, test)
     local p = getSpecificPlayer(player)
-    if p then
-        context:addOption("Export Currency to Wallet", p, exportItemsLogic)
-    end
+    if p then context:addOption("Export Currency to Wallet", p, exportItemsLogic) end
 end)
 
-Events.OnTick.Add(function(ticks)
-    if ticks % 120 == 0 then -- เช็คทุกๆ ~2 วินาทีเพื่อไม่ให้หนักเครื่อง
-        checkConfirmationAndRefund() 
-    end
-end)
+if isClient() then
+    Events.OnServerCommand.Add(OnServerCommand)
+    -- ระบบ Refund ของ Client (ถ้าผ่าน 20 วิแล้ว Server ไม่ส่ง Confirm มา)
+    Events.OnTick.Add(function(ticks)
+        if ticks % 120 == 0 then
+            local currentTime = getTimestampMs()
+            for txid, data in pairs(pendingTransactions) do
+                if currentTime > data.expireTime then
+                    local p = getSpecificPlayer(0) -- Client ตัวเอง
+                    if p then
+                        local inv = p:getInventory()
+                        for i=1, data.dollar do inv:AddItem("Base.CPE_Dollar") end
+                        for i=1, data.money do inv:AddItem("Base.Money") end
+                        p:Say("Bot Timeout! Items refunded.")
+                    end
+                    pendingTransactions[txid] = nil
+                end
+            end
+        end
+    end)
+else
+    Events.OnClientCommand.Add(OnClientCommand)
+    Events.OnTick.Add(function(ticks)
+        if ticks % 120 == 0 then checkServerConfirmation() end
+    end)
+end
 -- *************************--************  --- ************************************** --
 
 local tickCounter = 0

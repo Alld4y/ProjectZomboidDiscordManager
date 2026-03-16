@@ -293,6 +293,16 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton() && interaction.customId === 'buy_petrolCanEmpty') {
         await handlePurchase(shopPrices.petrolCanEmpty, 'Base.EmptyPetrolCan', 'Petrol Can (Empty)');
     }
+    if (interaction.isButton() && interaction.customId === 'buy_axe') {
+        await handlePurchase(shopPrices.axe, 'Base.Axe', 'Axe');
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_hacksaw') {
+        await handlePurchase(shopPrices.hacksaw, 'Base.Saw', 'Hacksaw');
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_nightStick') {
+        await handlePurchase(shopPrices.nightStick, 'Base.Nightstick', 'Night Stick');
+    }
+
 
     // **********************************************
 

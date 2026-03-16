@@ -31,7 +31,7 @@ export const initIPChecker = (client) => {
                         }
 
                         // ส่งอันใหม่
-                        await channel.send(`🌐 **Server IP!**\n**IP:** \`${currentIP}\` \n**Port:** \`16261\``);
+                        await channel.send(`🌐 **Server IP!**\n**IP:** \`${currentIP}\` \n**Port:** \`16261\`\nถ้าเห็น Server ไม่ออนไลน์ ให้คัดลอก Server IP ไปวางใหม่`);
                         writeFileSync(IP_CACHE_FILE, currentIP, 'utf-8');
                         
                     } catch (err) {
