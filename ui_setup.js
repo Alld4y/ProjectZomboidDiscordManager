@@ -6,19 +6,26 @@ export const embedColor = 0x0099FF;
 export const shopPrices = {
     CPE_Dollar: 2, 
     bigHikingBag: 500,
-    baseballBatNails: 250,
+    baseballBatNails: 400,
     armyBoots: 300,
     camoJacket: 300,
     firemanJacket: 400,
     crashHelmet: 400,
     cigarette: 300,
     skill_rc_book: 400,
-    petrolCan: 1200,
-    petrolCanEmpty: 1000,
+    petrolCan: 800,
+    petrolCanEmpty: 600,
     axe: 600,
     hacksaw: 400,
-    nightStick: 500
+    nightStick: 500,
 
+    cabinetMedical: 1000,
+    cabinetTool: 2000,
+    doorKnob: 150,
+    hinge: 150,
+    nailBox: 200,
+    trailer: 2500,
+    claimOrb: 500,
 };
 
 // ==========================================
@@ -53,7 +60,7 @@ export const createRow = (...buttons) => {
 export const setupRegisterChannel = async (message) => {
     const embed = createEmbed(
         '📝 ลงทะเบียนผู้เล่น Project Zomboid',
-        `🔸 กรุณากดปุ่มด้านล่างเพื่อผูกบัญชี Discord เข้ากับชื่อตัวละครในเกม\n\n🔹 *หมายเหตุ: โปรดใช้ชื่อเดียวกับที่ใช้ในเซิร์ฟเวอร์ มีผลกับพิมพ์เล็กและพิมพ์ใหญ่\n\n🔸 Please click the button below to link your Discord account to your in-game character.
+        `🔸 กรุณากดปุ่มด้านล่างเพื่อผูกบัญชี Discord เข้ากับชื่อตัวละครในเกม\n\n🔹 *หมายเหตุ: ต้องออนไลน์ในเซิร์ฟเวอร์ก่อน จึงกดลงทะเบียนได้ โปรดใช้ชื่อเดียวกับที่ใช้ในเซิร์ฟเวอร์ มีผลกับพิมพ์เล็กและพิมพ์ใหญ่\n\n🔸 Please click the button below to link your Discord account to your in-game character.
 \n🔹 *Note: Your name must match your in-game username exactly (Case-Sensitive). \n\n 🎁 รับ welcome pack \n -Coin x 500 (to wallet)\n-BeefJerky x 2\n-Baloney x 1\n-OrangeJuice x 2 \n\n **เข้าเกมและสร้างตัวละครก่อนกดรับ Welcome Pack\nEnter the game and create your character before claiming the Welcome Pack.**`
     );
     const row = createRow(
@@ -65,11 +72,14 @@ export const setupRegisterChannel = async (message) => {
 
 export const setupBotCommandChannel = async (message) => {
     const embed = createEmbed('Bot Command', 'เรียกใช้งานบอท');
-    const row = createRow(
-        createButton('player_online', 'Player Online', ButtonStyle.Secondary, '🧍🏾'),
-        createButton('check_wallet', 'Wallet', ButtonStyle.Primary, '🪙')
+    const row0 = createRow(
+        createButton('player_online', 'Player Online', ButtonStyle.Secondary, '📊'),
     );
-    await message.channel.send({ embeds: [embed], components: [row] });
+    const row1 = createRow(
+        createButton('check_wallet', 'Wallet', ButtonStyle.Primary, '🪙'),
+        createButton('daily_reward', 'Daily Reward', ButtonStyle.Success, '🎁'),
+    );
+    await message.channel.send({ embeds: [embed], components: [row0, row1] });
 };
 
 export const setupGeneralBotShopChannel = async (message) => {
@@ -80,6 +90,14 @@ export const setupGeneralBotShopChannel = async (message) => {
     );
     const dollar_row = createRow(createButton('buy_CPE_Dollar', `CPE_Dollar : ${shopPrices.CPE_Dollar}`, ButtonStyle.Success, '🛍️'));
     await message.channel.send({ embeds: [dollar_embed], components: [dollar_row] });
+
+    const claimOrb_embed = createEmbed(
+        "AVCS Claim Orb",
+        "สามารถเคลมรถได้\n\nCan claim vehicle",
+        "http://alldaygrow.tplinkdns.com:8080/claim_orb.png"
+    )
+    const claimOrb_row = createRow(createButton('buy_claimOrb', `Claim Orb : ${shopPrices.claimOrb}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [claimOrb_embed], components: [claimOrb_row] });
 
     const cigarette_embed = createEmbed(
         "Cigarette","บุหรี่เป็นไอเทมที่สามารถใช้เพื่อเพิ่มความสุขชั่วคราว แต่มีผลข้างเคียงที่ลดสุขภาพ\n\nCigarettes are items that can be used to temporarily boost happiness but have a side effect of reducing health.",
@@ -107,7 +125,7 @@ export const setupBagBotShopChannel = async (message) => {
     await message.channel.send({ embeds: [embed], components: [row] });
 };
 
-export const setupMaleeBotShopChannel = async (message) => {
+export const setupMeleeBotShopChannel = async (message) => {
     const embed = createEmbed(
         "Baseball Bat Nails",
         "ไม้เบสบอลที่มีตะปูสามารถใช้เป็นอาวุธได้ โดยจะเพิ่มระดับความยากตามทักษะการทุบตีระยะไกล\n\nA baseball bat with nails can be used as a weapon, scaling with the long blunt skill.",
@@ -194,7 +212,51 @@ export const setupVehiclePartsBotShopChannel = async (message) => {
     );
     const PTcanEmpty_row = createRow(createButton('buy_petrolCanEmpty', `Petrol Can (Empty) : ${shopPrices.petrolCanEmpty}`, ButtonStyle.Success, '🛍️'));
     await message.channel.send({ embeds: [PTcanEmpty_embed], components: [PTcanEmpty_row] });
+    const trailer_embed = createEmbed(
+        "Trailer",
+        "รถพ่วงเป็นยานพาหนะอเนกประสงค์ที่ไม่มีเครื่องยนต์ พบเห็นได้ทั่วไปในเขต Knox County สามารถต่อพ่วงเข้ากับท้ายรถทุกคันเพื่อบรรทุกสัมภาระเพิ่มเติมได้อีก 80 หน่วย\n\nA trailer is an unpowered utility vehicle found throughout Knox Country. They can be attached to the back of all vehicles to carry an additional 80 units of encumbrance.",
+        "https://pzwiki.net/w/images/5/53/Trailer_Model.png"
+    )
+    const trailer_row = createRow(createButton('buy_trailer', `Trailer : ${shopPrices.trailer}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [trailer_embed], components: [trailer_row] });
+
 };
+
+export const setupFurnitureBotShopChannel = async (message) => {
+    const cabinetMedical_embed = createEmbed(
+        "Cabinet Medical",
+        "ตู้เก็บของที่ใช้สำหรับเก็บยาและอุปกรณ์การแพทย์\n\nA cabinet medical is a storage container used for keeping medical supplies and equipment.",
+        "https://pzwiki.net/w/images/d/d2/MedicalCabinet_Model.png"
+    );
+    const cabinetMedical_row = createRow(createButton('buy_cabinetMedical', `Cabinet Medical : ${shopPrices.cabinetMedical}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [cabinetMedical_embed], components: [cabinetMedical_row] });
+};
+
+export const setupBuildBotShopChannel = async (message) => {
+    const doorKnob_embed = createEmbed(
+        "Door Knob x2",
+        "ลูกบิดประตูที่ใช้สำหรับเปิดประตู\n\nA door knob is a hardware used for opening doors.",
+        "https://pzwiki.net/w/images/a/a0/DoorKnob_Model.png"
+    );
+    const doorKnob_row = createRow(createButton('buy_doorKnob', `Door Knob : ${shopPrices.doorKnob}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [doorKnob_embed], components: [doorKnob_row] });
+
+    const hinge_embed = createEmbed(
+        "Hinge x5",
+        "บานพับที่ใช้สำหรับติดประตูเข้ากับผนัง\n\nA hinge is a hardware used for attaching doors to walls.",
+        "https://pzwiki.net/w/images/c/c5/DoorHinge_Model.png"
+    );
+    const hinge_row = createRow(createButton('buy_hinge', `Hinge : ${shopPrices.hinge}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [hinge_embed], components: [hinge_row] });
+
+    const nailBox_embed = createEmbed(
+        "Nail Box x1",
+        "กล่องตะปูที่ใช้สำหรับเก็บตะปู\n\nA nail box is a container used for storing nails.",
+        "http://alldaygrow.tplinkdns.com:8080/nailBox.png"
+    );
+    const nailBox_row = createRow(createButton('buy_nailBox', `Nail Box : ${shopPrices.nailBox}`, ButtonStyle.Success, '🛍️'));
+    await message.channel.send({ embeds: [nailBox_embed], components: [nailBox_row] });
+}
 
 export async function setupRoleClaimChannel(message) {
     const row = new ActionRowBuilder().addComponents(

@@ -3,11 +3,12 @@ import { sendCommand } from './index.js';
 
 // ตั้งเวลารีสตาร์ท (ตัวอย่าง: ทุก 6 ชั่วโมง ที่นาทีที่ 0)
 // '0 0,6,12,18 * * *'
-export const restartScheduler = cron.schedule('55 23,5,11,17 * * *', async () => {
+// 55 23,5,11,17 * * *
+export const restartScheduler = cron.schedule('55 2,5,8,11,14,17,20,23 * * *', async () => {
     console.log('🔄 [System] Starting scheduled restart process...');
     
     // 1. เตือนผู้เล่นล่วงหน้า 5 นาที
-    await sendCommand('servermsg "Server will restart in 5 mins for maintenance"');
+    await sendCommand('servermsg "Server will restart in 5 mins"');
     
     // 2. เตือนอีกครั้งเมื่อเหลือ 1 นาที
     setTimeout(async () => {

@@ -15,6 +15,8 @@ import { query } from "./db.js";
 import { existsSync, readFileSync, watch } from 'fs';
 import { join } from 'path';
 import { initIPChecker } from './ip_check.js';
+import { restartScheduler } from './auto_restart.js';
+import { dailyRewardReset } from './daily_reward.js';
 
 // 📦 Import หน้าตาและราคาจากไฟล์ ui_setup.js
 import { 
@@ -22,14 +24,16 @@ import {
     setupRegisterChannel, 
     setupBotCommandChannel, 
     setupBagBotShopChannel, 
-    setupMaleeBotShopChannel, 
+    setupMeleeBotShopChannel, 
     setupClothingBotShopChannel,
     setupGeneralBotShopChannel,
     setupRoleClaimChannel,
-    setupVehiclePartsBotShopChannel
+    setupVehiclePartsBotShopChannel,
+    setupBuildBotShopChannel
 } from './ui_setup.js';
 
 const welcomePack_value = 500; // จำนวนเงินที่ให้เมื่อรับ Welcome Pack
+const dailyRewardValue = 250; // จำนวนเงินที่ให้เมื่อรับ Daily Reward
 
 const client = new Client({
     intents: [
@@ -40,7 +44,7 @@ const client = new Client({
 });
 
 // --- RCON Function ---
-async function sendCommand(cmd) {
+export async function sendCommand(cmd) {
     try {
         const rcon = await Rcon.connect({
             host: "127.0.0.1",
@@ -78,7 +82,7 @@ async function checkPlayerOnline(playerName) {
 
 client.once('clientReady', () => { 
     console.log(`✅ Bot ${client.user.tag} is Online!`);
-    sendCommand('servermsg "System: Discord Bot is now Online!"');
+    // sendCommand('servermsg "System: Discord Bot is now Online!"');
     initIPChecker(client);
 });
 
@@ -89,8 +93,8 @@ client.on('messageCreate', async (message) => {
     // 🛡️ 1. จัดการกลุ่มคำสั่ง Setup (เฉพาะ Moderator/Admin)N
     const setupCommands = [
         '!setup-gnr-bs', '!setup-reg', '!setup-botcmd', 
-        '!setup-bag-bs', '!setup-malee-bs', '!setup-clothing-bs',
-        '!setup-role', '!setup-vp-bs'
+        '!setup-bag-bs', '!setup-melee-bs', '!setup-clothing-bs',
+        '!setup-role', '!setup-vp-bs', '!setup-build-bs'
     ];
 
     if (message.content === '!setup-role') await setupRoleClaimChannel(message);
@@ -111,9 +115,10 @@ client.on('messageCreate', async (message) => {
         else if (message.content === '!setup-reg') await setupRegisterChannel(message);
         else if (message.content === '!setup-botcmd') await setupBotCommandChannel(message);
         else if (message.content === '!setup-bag-bs') await setupBagBotShopChannel(message);
-        else if (message.content === '!setup-malee-bs') await setupMaleeBotShopChannel(message);
+        else if (message.content === '!setup-melee-bs') await setupMeleeBotShopChannel(message);
         else if (message.content === '!setup-clothing-bs') await setupClothingBotShopChannel(message);
         else if (message.content === '!setup-vp-bs') await setupVehiclePartsBotShopChannel(message);
+        else if (message.content === '!setup-build-bs') await setupBuildBotShopChannel(message);
 
         // ลบข้อความคำสั่งหลังจากตั้งค่าเสร็จ
         await message.delete().catch(() => {});
@@ -171,7 +176,7 @@ client.on('messageCreate', async (message) => {
 // --- Interaction Handling (Buttons & Modals) ---
 client.on('interactionCreate', async (interaction) => {
 
-    const handlePurchase = async (price, itemID, itemName) => {
+    const handlePurchase = async (price, itemID, itemName, quantity = 1) => {
         const res = await query(`SELECT player_name, coin FROM public.data WHERE discord_id = $1`, [interaction.user.id]);
         if (res.rowCount === 0) {
             return interaction.reply({ content: "❌ ไม่พบข้อมูลการลงทะเบียนในระบบ", flags: [MessageFlags.Ephemeral] });
@@ -188,7 +193,40 @@ client.on('interactionCreate', async (interaction) => {
         }
         
         if (player_data.coin >= price) {
-            await sendCommand(`additem "${player_data.player_name}" ${itemID} 1`);
+            await sendCommand(`additem "${player_data.player_name}" ${itemID} ${quantity}`);
+            await query(`UPDATE public.data SET coin = coin - $1 WHERE discord_id = $2 AND player_name = $3`, [price, interaction.user.id, player_data.player_name]);
+            const newCoin = (await query(`SELECT coin FROM public.data WHERE discord_id = $1`, [interaction.user.id])).rows[0].coin;
+            
+            interaction.reply({
+                content: `✅ ส่ง ${itemName} ให้ตัวละคร **${player_data.player_name}** แล้ว!\nยอดเงินคงเหลือ: ${newCoin} CPE Dollars`,
+                flags: [MessageFlags.Ephemeral]
+            });
+        } else {
+            interaction.reply({
+                content: `❌ ยอดเงินในกระเป๋าไม่เพียงพอ คุณมี ${player_data.coin > 1 ? player_data.coin + " Coins" : player_data.coin + " Coin"}`,
+                flags: [MessageFlags.Ephemeral]
+            });
+        }
+    };
+
+    const handlePurchaseVehicle = async (price, itemID, itemName) => {
+        const res = await query(`SELECT player_name, coin FROM public.data WHERE discord_id = $1`, [interaction.user.id]);
+        if (res.rowCount === 0) {
+            return interaction.reply({ content: "❌ ไม่พบข้อมูลการลงทะเบียนในระบบ", flags: [MessageFlags.Ephemeral] });
+        }
+        
+        const player_data = res.rows[0];
+
+        const isOnline = await checkPlayerOnline(player_data.player_name);
+        if (!isOnline) {
+            return interaction.reply({ 
+                content: `❌ การสั่งซื้อล้มเหลว: ตัวละคร **${player_data.player_name}** ไม่ได้ออนไลน์อยู่ในเซิร์ฟเวอร์\n*(กรุณาเข้าเกมก่อนกดซื้อสินค้าเพื่อป้องกันไอเทมสูญหาย)*`, 
+                flags: [MessageFlags.Ephemeral] 
+            });
+        }
+        
+        if (player_data.coin >= price) {
+            await sendCommand(`addvehicle "${itemID}" ${player_data.player_name}`);
             await query(`UPDATE public.data SET coin = coin - $1 WHERE discord_id = $2 AND player_name = $3`, [price, interaction.user.id, player_data.player_name]);
             const newCoin = (await query(`SELECT coin FROM public.data WHERE discord_id = $1`, [interaction.user.id])).rows[0].coin;
             
@@ -264,12 +302,15 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton() && interaction.customId === 'buy_skill_rc_book') {
         await handlePurchase(shopPrices.skill_rc_book, 'Base.SkillRecoveryBoundJournal', 'Bound Journal');
     }
+    if (interaction.isButton() && interaction.customId === 'buy_claimOrb') {
+        await handlePurchase(shopPrices.claimOrb, 'Base.AVCSClaimOrb', 'Claim Orb')
+    }
 
     // Bag Shop
     if (interaction.isButton() && interaction.customId === 'buy_bigHikingBag') {
         await handlePurchase(shopPrices.bigHikingBag, 'Base.Bag_BigHikingBag', 'Big Hiking Bag');
     }
-    // Malee Shop
+    // Melee Shop
     if (interaction.isButton() && interaction.customId === 'buy_baseballBatNails') {
         await handlePurchase(shopPrices.baseballBatNails, 'Base.BaseballBatNails', 'Baseball Bat Nails');
     }
@@ -302,7 +343,20 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton() && interaction.customId === 'buy_nightStick') {
         await handlePurchase(shopPrices.nightStick, 'Base.Nightstick', 'Night Stick');
     }
+    if (interaction.isButton() && interaction.customId === 'buy_trailer') {
+        await handlePurchaseVehicle(shopPrices.trailer, 'Base.Trailer', 'Trailer');
+    }
 
+    // build bot shop
+    if (interaction.isButton() && interaction.customId === 'buy_doorKnob') {
+        await handlePurchase(shopPrices.doorKnob, 'Base.Doorknob', 'Door Knob', 2);
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_hinge') {
+        await handlePurchase(shopPrices.hinge, 'Base.Hinge', 'Hinge', 5);
+    }
+    if (interaction.isButton() && interaction.customId === 'buy_nailBox') {
+        await handlePurchase(shopPrices.nailBox, 'Base.NailsBox', 'Nails Box');
+    }
 
     // **********************************************
 
@@ -342,6 +396,30 @@ client.on('interactionCreate', async (interaction) => {
             flags: [MessageFlags.Ephemeral]
         });
     }
+    if (interaction.isButton() && interaction.customId === 'daily_reward') {
+        const queryRes = await query(`SELECT player_name, daily_reward FROM public.data WHERE discord_id = $1`, [interaction.user.id]);
+        let playerName;
+        let dailyRewardStatus;
+        if (queryRes.rowCount === 0) {
+            return interaction.reply({ content: "❌ ไม่พบข้อมูลการลงทะเบียนในระบบ", flags: [MessageFlags.Ephemeral] });
+        } else if (queryRes.rowCount === 1) {
+            playerName = queryRes.rows[0].player_name;
+            dailyRewardStatus = queryRes.rows[0].daily_reward;
+            checkPlayerOnline(playerName).then(isOnline => {
+                if (!isOnline) {
+                    return interaction.reply({content: `❌ การรับรางวัลล้มเหลว: ตัวละคร **${playerName}** ไม่ได้ออนไลน์อยู่ในเซิร์ฟเวอร์\n*(กรุณาเข้าเกมก่อนกดรับ Daily Reward)*`, flags: [MessageFlags.Ephemeral] });
+                } else {
+                    if (dailyRewardStatus === true) {
+                        return interaction.reply({ content: "❌ คุณได้รับ Daily Reward ไปแล้ววันนี้! โปรดรอวันถัดไปเพื่อรับใหม่", flags: [MessageFlags.Ephemeral] });
+                    } else if (dailyRewardStatus === false) {
+                        query(`UPDATE public.data SET coin = coin + ${dailyRewardValue}, daily_reward = true WHERE discord_id = $1`, [interaction.user.id]);
+                        return interaction.reply({ content: `🎉 คุณได้รับ Daily Reward ${dailyRewardValue} Coins เรียบร้อยแล้ว! ขอให้สนุกกับการเอาชีวิตรอดใน Project Zomboid`, flags: [MessageFlags.Ephemeral] });
+                    }
+                }
+            });
+        }
+    }
+
 
     if (interaction.isButton() && interaction.customId === 'welcomePack') {
         try {
@@ -381,7 +459,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             // อัปเดตสถานะการรับของ แต่ไม่ต้องบวกเงินเพิ่มแล้ว
-            await query(`UPDATE public.data SET is_welcomepack = $1, coin=$2 WHERE discord_id = $3`, [true, welcomePack_value, discord_id]);
+            await query(`UPDATE public.data SET is_welcomepack = $1, coin = coin + $2 WHERE discord_id = $3`, [true, welcomePack_value, discord_id]);
 
             await interaction.reply({
                 content: `✅ ส่งไอเทม Welcome Pack ให้ตัวละคร **${player_data.ig_name}** เรียบร้อยแล้ว!`,
@@ -416,13 +494,23 @@ client.on('interactionCreate', async (interaction) => {
                     content: `❌ ชื่อตัวละคร **${pzName}** มีผู้เล่นอื่นใช้งานแล้วครับ!\n*(กรุณาเปลี่ยนชื่อตัวละครใหม่ในเกม แล้วค่อยมากดลงทะเบียนอีกครั้ง)*`, 
                     flags: [MessageFlags.Ephemeral] 
                 });
+            } else {
+                // เช็คว่าชื่อตัวละครนี้มีอยู่ในเซิร์ฟเวอร์จริงๆ หรือเปล่า (เช็คแบบ Case-sensitive)
+                const isOnline = await checkPlayerOnline(pzName);
+                if (!isOnline) {
+                    return interaction.reply({
+                        content: `❌ ชื่อตัวละคร **${pzName}** ไม่ได้ออนไลน์อยู่ในเซิร์ฟเวอร์\n*(กรุณาเข้าเกมก่อนกดลงทะเบียน)*`,
+                        flags: [MessageFlags.Ephemeral]
+                    });
+                } else if (isOnline && pzName.length > 0) {
+                    await query(`INSERT INTO public.data (discord_id, player_name, coin) VALUES ($1, $2, $3);`, [discordId, pzName, 0]);
+                    await interaction.reply({ content: `✅ ลงทะเบียนชื่อ **${pzName}** สำเร็จ! ขอให้สนุกกับ Project Zomboid นะครับ`, flags: [MessageFlags.Ephemeral] });
+                    const registered_role = interaction.guild.roles.cache.find(r => r.name === "Registered");
+                    await interaction.member.roles.add(registered_role);
+                }
             }
 
-            // 3. ถ้าผ่านทั้งหมด ค่อยให้ลงทะเบียน
-            await query(`INSERT INTO public.data (discord_id, player_name, coin) VALUES ($1, $2, $3);`, [discordId, pzName, 0]);
-            await interaction.reply({ content: `✅ ลงทะเบียนชื่อ **${pzName}** สำเร็จ! ขอให้สนุกกับ Project Zomboid นะครับ`, flags: [MessageFlags.Ephemeral] });
-            const registered_role = interaction.guild.roles.cache.find(r => r.name === "Registered");
-            await interaction.member.roles.add(registered_role);
+
         } catch (err) {
             console.error(err);
             await interaction.reply({ content: '❌ บันทึกข้อมูลไม่สำเร็จ เกิดข้อผิดพลาดในระบบฐานข้อมูล', flags: [MessageFlags.Ephemeral] });
@@ -513,27 +601,38 @@ const move_Currency_to_wallet = async (txid, playerName, dollarCount, moneyCount
 /**
  * 2. ฟังก์ชัน Parse Log แบบวนหาบรรทัดล่าสุดที่ถูกต้อง
  */
+/**
+ * 2. ฟังก์ชัน Parse Log แบบวนหาบรรทัดล่าสุดที่ถูกต้อง (ฉบับรองรับชื่อมีเว้นวรรค)
+ */
 function parseZomboidLog(targetFilePath) {
     if (!existsSync(targetFilePath)) return null;
 
     try {
-        // อ่านไฟล์ทั้งหมดมาแยกบรรทัด
         const fileContent = readFileSync(targetFilePath, 'utf-8');
         const lines = fileContent.trim().split(/\r?\n/);
         
-        // วนจากล่างขึ้นบน เพื่อหาบรรทัดล่าสุดที่มีรูปแบบที่ถูกต้อง
         for (let i = lines.length - 1; i >= 0; i--) {
             const line = lines[i];
-            const regex = /\[TXID\]:(.*?)\s*\[PLAYER\]:(.*?)\s*\[CPE_DOLLAR\]:(\d+)\s*\[MONEY\]:(\d+)/;
+            
+            // ✅ แก้ไข Regex ใหม่: 
+            // 1. \s* ดักจับช่องว่างที่อาจจะมีหรือไม่มีก็ได้
+            // 2. (.*?) ใช้จับข้อความแบบ Non-greedy
+            // 3. (?=\s*\[|$) คือ Lookahead บอกว่า "หยุดเมื่อเจอช่องว่างตามด้วย [ ของ Tag ถัดไป"
+            const regex = /\[TXID\]:\s*(.*?)\s*\[PLAYER\]:\s*(.*?)\s*\[CPE_DOLLAR\]:\s*(\d+)\s*\[MONEY\]:\s*(\d+)/;
+            
             const match = line.match(regex);
             
             if (match) {
-                return {
+                // ข้อมูลที่ได้จะถูก .trim() อีกรอบเพื่อความชัวร์
+                const data = {
                     txid: match[1].trim(),
-                    playerName: match[2].trim(),
+                    playerName: match[2].trim(), // ตรงนี้จะรองรับ "Meaw 19" หรือ "Sandee CPE" ได้แล้วครับ
                     dollarAmount: parseInt(match[3], 10),
                     moneyAmount: parseInt(match[4], 10)
                 };
+                
+                console.log(`[SCAN] 🔍 ตรวจพบไอเทมจาก: ${data.playerName} (TXID: ${data.txid})`);
+                return data;
             }
         }
     } catch (err) {
